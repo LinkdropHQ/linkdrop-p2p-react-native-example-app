@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "ethers": "^6.8.0",
-    "linkdrop-p2p-sdk": "^2.0.0-alpha.1",
+    "linkdrop-p2p-sdk": "3.0.0-alpha.0-rc.1",
     "react": "18.2.0",
     "react-native": "0.72.5",
     "react-native-quick-crypto": "^0.6.1"
