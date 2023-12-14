@@ -1,10 +1,3 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
 import React from 'react';
 import type { PropsWithChildren } from 'react';
 import {
@@ -67,7 +60,6 @@ function Section({ children, title }: SectionProps): JSX.Element {
 }
 
 const API_KEY = Config.API_KEY
-//const API_URL = "http://localhost:3015"
 const BASE_URL = Config.BASE_URL
 const SENDER_PK = Config.SENDER_PK
 const JSON_RPC_URL = Config.JSON_RPC_URL
@@ -79,8 +71,6 @@ const getRandomBytes = (length) => {
   return randBytes
 }
 const sdk = new LinkdropP2P({ apiKey: API_KEY, baseUrl: BASE_URL, getRandomBytes })
-//const sdk = {}
-//const ethers = {}
 const signer = new ethers.Wallet(SENDER_PK)
 const provider = new ethers.JsonRpcProvider(JSON_RPC_URL)
 const wallet = new ethers.Wallet(SENDER_PK, provider)
@@ -90,14 +80,11 @@ const ERC20_ABI = [
 ];
 
 const signTypedData = async (domain, types, message) => {
-  console.log({ domain, types, message })
   const signature = await signer.signTypedData(domain, types, message)
-  console.log({ signature })
   return signature
 }
 
 const sendTransaction = async ({ to, value, gasLimit, data }) => {
-  console.log({ value })
   const tx = await wallet.sendTransaction({ to, value, gasLimit, data })
   return { hash: tx.hash }
 }
@@ -139,15 +126,17 @@ const generateUSDCLink = async (amount, recover = false) => {
     console.log({ minTransferAmount, maxTransferAmount })
     console.log("depositing..")
 
+    const res = await claimLink.updateAmount(minTransferAmount)
+    console.log({ res })
 
-    let { claimUrl, transferId, txHash } = await claimLink.depositWithAuthorization({ signTypedData, getRandomBytes })
+    let { claimUrl, transferId, txHash } = await claimLink.depositWithAuthorization({ signTypedData })
     console.log({ txHash, claimUrl, transferId })
     if (recover) {
       console.log("Recovering claim URL")
       claimLink = await sdk.retrieveClaimLink({ chainId, txHash: txHash.toLowerCase() })
       console.log({ claimLink })
 
-      const { claimUrl: newClaimUrl, transferId: newTransferId } = await claimLink.generateClaimUrl({ signTypedData, getRandomBytes })
+      const { claimUrl: newClaimUrl, transferId: newTransferId } = await claimLink.generateClaimUrl({ signTypedData })
       console.log({ newClaimUrl, newTransferId })
       claimUrl = newClaimUrl
     }
@@ -166,25 +155,14 @@ const generateUSDCLink = async (amount, recover = false) => {
     const dest = from
     await redeem(claimUrl, dest)
 
-    const {
-      claimLinks, // claim links fetched according to search parameters
-      resultSet // information about fetched data (count, offset, total)
-    } = await sdk.getSenderHistory({
-      //onlyActive: true,
-      chainId,
-      sender: from,
-      //token
-      // tokenAddress: ethers.ZeroAddress
-    })
+    /* const {
+     *   claimLinks, // claim links fetched according to search parameters
+     *   resultSet // information about fetched data (count, offset, total)
+     * } = await sdk.getSenderHistory({
+     *   chainId,
+     *   sender: from,
+     * }) */
 
-
-    console.log({ claimLinks, resultSet })
-    const cc = claimLinks[0]
-    console.log(claimLinks)
-
-    const ccRet = await sdk.retrieveClaimLink({ chainId, sender: from, transferId: cc.transferId })
-    console.log("-------:")
-    console.log(ccRet)
 
   } catch (err) {
     console.log("error:")
@@ -193,16 +171,17 @@ const generateUSDCLink = async (amount, recover = false) => {
   }
 }
 
-const generateStablecoinLink = async (amount, recover = false) => {
+const generateERC20Link = async (amount, recover = false) => {
   try {
     const from = signer.address.toLowerCase() // Sender's Ethereum address
     const token = USDC_ADDRESS // token contract address
     const tokenType = "ERC20" // one of "NATIVE" | "ERC20" 
     const chainId = CHAIN_ID // network chain ID
-    const expiration = String(Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30); // 30 days from now
+    const expiration = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30; // 30 days from now
 
     const limits = await sdk.getLimits({ token, tokenType: "ERC20", chainId })
     console.log({ limits })
+
 
     let claimLink = await sdk.createClaimLink({ from, token, amount, expiration, chainId, tokenType })
     console.log("Claim link inited")
@@ -210,6 +189,9 @@ const generateStablecoinLink = async (amount, recover = false) => {
 
     const { minTransferAmount, maxTransferAmount } = await sdk.getLimits({ token, chainId, tokenType })
     console.log({ minTransferAmount, maxTransferAmount })
+
+    const res = await claimLink.updateAmount("100000")
+    console.log({ res })
 
     console.log("approving escrow contract...")
 
@@ -224,18 +206,19 @@ const generateStablecoinLink = async (amount, recover = false) => {
     console.log("depositing..")
 
 
-    let { claimUrl, transferId, txHash } = await claimLink.deposit({ sendTransaction, getRandomBytes })
+    let { claimUrl, transferId, txHash } = await claimLink.deposit({ sendTransaction })
     console.log({ txHash, claimUrl, transferId })
     if (recover) {
       console.log("Recovering claim URL")
       claimLink = await sdk.retrieveClaimLink({ chainId, txHash: txHash.toLowerCase() })
       console.log({ claimLink })
 
-      const { claimUrl: newClaimUrl, transferId: newTransferId } = await claimLink.generateClaimUrl({ signTypedData, getRandomBytes })
+      const { claimUrl: newClaimUrl, transferId: newTransferId } = await claimLink.generateClaimUrl({ signTypedData })
       console.log({ newClaimUrl, newTransferId })
       claimUrl = newClaimUrl
     }
 
+    await provider.waitForTransaction(txHash)
     let confirmed = false
     while (!confirmed) {
       const { status, operations } = await claimLink.getStatus()
@@ -247,36 +230,20 @@ const generateStablecoinLink = async (amount, recover = false) => {
     }
 
     console.log("confirmed deposited")
-    await sleep(10000)
+
+    // wait for 10 seconds
+    // await sleep(10000)
     const dest = from
     await redeem(claimUrl, dest)
 
-
-
-    const {
-      claimLinks, // claim links fetched according to search parameters
-      resultSet // information about fetched data (count, offset, total)
-    } = await sdk.getSenderHistory({
-      //onlyActive: true,
-      chainId,
-      sender: from,
-      //token
-      // tokenAddress: ethers.ZeroAddress
-    })
-
-
-    console.log({ claimLinks, resultSet })
-    const cc = claimLinks[0]
-    console.log(claimLinks)
-
-    const ccRet = await sdk.retrieveClaimLink({ chainId, sender: from, transferId: cc.transferId })
-    //console.log(cc.operations)
-    console.log("-------:")
-    console.log(ccRet)
-
-
-    /* const block = await provider.getBlock(50052559)
-     * console.log({ block }) */
+    /* const {
+     *   claimLinks, // claim links fetched according to search parameters
+     *   resultSet // information about fetched data (count, offset, total)
+     * } = await sdk.getSenderHistory({
+     *   //onlyActive: true,
+     *   chainId,
+     *   sender: from,
+     * }) */
 
   } catch (err) {
     console.log("error:")
@@ -292,32 +259,34 @@ const generateETHLink = async (amount, recover = false) => {
   const token = ethers.ZeroAddress // token contract address
   const tokenType = "NATIVE" // one of "NATIVE" | "ERC20" 
   const chainId = CHAIN_ID // network chain ID
-  const expiration = String(Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30); //30 days from now
+  const expiration = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30; //30 days from now
   try {
-    let claimLink = await sdk.createClaimLink({ from, token, amount, expiration, chainId, tokenType })
-    console.log("Claim link inited")
 
+    const { minTransferAmount, maxTransferAmount } = await sdk.getLimits({ token, chainId, tokenType })
+    console.log({ minTransferAmount, maxTransferAmount })
+
+    let claimLink = await sdk.createClaimLink({ from, token, amount, expiration, chainId, tokenType })
     console.log({ claimLink })
 
-    //const res = await claimLink.updateAmount("10000000000000000")
-    //console.log({ res })
+    const res = await claimLink.updateAmount(minTransferAmount)
+    console.log({ res })
 
     console.log("depositing..")
 
-    let { claimUrl, transferId, txHash } = await claimLink.deposit({ sendTransaction, getRandomBytes })
+    let { claimUrl, transferId, txHash } = await claimLink.deposit({ sendTransaction })
     console.log({ txHash, claimUrl, transferId })
 
-    // regenerating link 
+    // re-generating link 
     if (recover) {
       console.log("Recovering claim URL")
       claimLink = await sdk.retrieveClaimLink({ chainId, txHash })
       console.log({ claimLink })
-      let { claimUrl: newClaimUrl, transferId: newTransferId } = await claimLink.generateClaimUrl({ signTypedData, getRandomBytes })
+      let { claimUrl: newClaimUrl, transferId: newTransferId } = await claimLink.generateClaimUrl({ signTypedData })
       console.log({ newClaimUrl, newTransferId })
       claimUrl = newClaimUrl
     }
 
-
+    await provider.waitForTransaction(txHash)
 
     let confirmed = false
     while (!confirmed) {
@@ -334,8 +303,17 @@ const generateETHLink = async (amount, recover = false) => {
 
 
     const dest = from
-    // const claimUrl = "https://cb.linkdrop.io/#/matic?k=78DdpBKAdu6m8KA9TvSYsUjTUE87S3wbnccCimEGeEQD&s=4ERZxxdBnFj1PV2pTdzyp51UugLN&c=137&v=2"
     await redeem(claimUrl, dest)
+
+    /* const {
+     *   claimLinks, // claim links fetched according to search parameters
+     *   resultSet // information about fetched data (count, offset, total)
+     * } = await sdk.getSenderHistory({
+     *   //onlyActive: true,
+     *   chainId,
+     *   sender: from,
+     *   token: ethers.ZeroAddress
+     * }) */
   } catch (err) {
     console.log("error:")
     console.log(err)
@@ -358,50 +336,40 @@ function App(): JSX.Element {
           style={{
             backgroundColor: isDarkMode ? Colors.black : Colors.white,
           }}>
-          <Section title="Generate USDC Link and claim it">
+          <Section title="USDC">
             <Button
               title="Generate USDC Link and claim"
               onPress={() => generateUSDCLink("150001")}
             />
-          </Section>
-          <Section title="Generate USDC Link, recover and claim it">
+
             <Button
               title="Generate USDC Link, recover and claim"
               onPress={() => generateUSDCLink("1000000", true)}
             />
           </Section>
-
-          <Section title="Generate stablecoin Link and claim it">
+          <Section title="ERC20">
             <Button
-              title="Generate Stablecoin Link and claim"
-              onPress={() => generateStablecoinLink("150000")}
+              title="Generate ERC20 Link and claim"
+              onPress={() => generateERC20Link("1000000")}
+            />
+            <Button
+              title="Generate ERC20 Link, recover and claim"
+              onPress={() => generateERC20Link("1000000", true)}
             />
           </Section>
-          <Section title="Generate Stablecoin Link, recover and claim it">
-            <Button
-              title="Generate Stablecoin Link, recover and claim"
-              onPress={() => generateStablecoinLink("1000000", true)}
-            />
-          </Section>
-
-
-          <Section title="Generate ETH Link and claim it">
+          <Section title="ETH">
             <Button
               title="Generate ETH Link and claim"
               onPress={() => generateETHLink("20000000000000000")}
             />
-          </Section>
-
-          <Section title="Generate ETH Link, recover and claim it">
             <Button
               title="Generate ETH Link, recover and claim"
               onPress={() => generateETHLink("10000000000000000", true)}
             />
           </Section>
-
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }
 
